@@ -123,7 +123,7 @@ export function Dashboard() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Operations Dashboard</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Cross-border payments — live stats refresh every 15 s
+          Cross-border payments — live stats refresh every 30 s
         </p>
       </div>
 

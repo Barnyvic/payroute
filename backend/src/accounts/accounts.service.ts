@@ -35,7 +35,7 @@ export class AccountsService {
     const account = await manager
       .createQueryBuilder(Account, 'account')
       .where('account.id = :id', { id })
-      .setLock('pessimistic_write', undefined, ['nowait'])
+      .setLock('pessimistic_write_or_fail')
       .getOne();
 
     if (!account) {

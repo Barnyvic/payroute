@@ -12,7 +12,7 @@ export function usePaymentList(params: ListPaymentsParams = {}) {
       
       const data = query.state.data;
       const hasProcessing = data?.data?.some((t) => t.status === 'processing');
-      return hasProcessing ? 5000 : false;
+      return hasProcessing ? 10_000 : false;
     },
   });
 }
@@ -24,7 +24,7 @@ export function usePayment(id: string) {
     enabled: Boolean(id),
     refetchInterval: (query) => {
       const status = query.state.data?.transaction?.status;
-      return status === 'processing' ? 5000 : false;
+      return status === 'processing' ? 10_000 : false;
     },
   });
 }
@@ -33,7 +33,7 @@ export function usePaymentStats() {
   return useQuery({
     queryKey: [PAYMENTS_KEY, 'stats'],
     queryFn: () => paymentsApi.getStats(),
-    refetchInterval: 15_000,
+    refetchInterval: 30_000,
   });
 }
 

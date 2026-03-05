@@ -25,8 +25,11 @@ import { CreatePaymentDto } from './dto/create-payment.dto';
 import { ListPaymentsDto } from './dto/list-payments.dto';
 import { RefundPaymentDto } from './dto/refund-payment.dto';
 
-const ACCOUNT_LOCK_TTL_MS = 15_000; 
+const ACCOUNT_LOCK_TTL_MS = 15_000;
 const REFUND_LOCK_TTL_MS = 30_000;
+const STATS_CACHE_KEY = 'payments:stats';
+const STATS_CACHE_TTL_MS = 30_000;
+const LIST_CACHE_TTL_MS = 10_000;
 
 @Injectable()
 export class PaymentsService {
@@ -179,6 +182,8 @@ export class PaymentsService {
       PROVIDER_JOB_OPTIONS,
     );
 
+    await this.invalidatePaymentCaches();
+
     return savedTransaction;
   }
 
@@ -212,7 +217,7 @@ export class PaymentsService {
           current = await manager
             .createQueryBuilder(Transaction, 't')
             .where('t.id = :id', { id })
-            .setLock('pessimistic_write', undefined, ['nowait'])
+            .setLock('pessimistic_write_or_fail')
             .getOne();
         } catch (err) {
           if (err.message?.includes('could not obtain lock')) {
@@ -284,6 +289,8 @@ export class PaymentsService {
       new PaymentRefundedEvent(id, dto.reason, new Date()),
     );
 
+    await this.invalidatePaymentCaches();
+
     return this.transactionRepo.findOne({ where: { id } });
   }
 
@@ -318,6 +325,16 @@ export class PaymentsService {
   }> {
     const page = dto.page || 1;
     const limit = dto.limit || 20;
+
+    const cacheKey = `payments:list:${page}:${limit}:${dto.status || 'all'}`;
+    if (!dto.startDate && !dto.endDate) {
+      const cached = await this.redisService.getObject<{
+        data: Transaction[];
+        pagination: { total: number; page: number; limit: number; totalPages: number };
+      }>(cacheKey);
+      if (cached) return cached;
+    }
+
     const skip = (page - 1) * limit;
 
     const query = this.transactionRepo
@@ -341,17 +358,31 @@ export class PaymentsService {
     }
 
     const [data, total] = await query.getManyAndCount();
+    const result = { data, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } };
 
-    return { data, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    if (!dto.startDate && !dto.endDate) {
+      this.redisService.setObject(cacheKey, result, LIST_CACHE_TTL_MS).catch(() => {});
+    }
+
+    return result;
   }
 
-  
   async getStats(): Promise<{
     counts: Record<string, number>;
     totalVolumeByStatus: Record<string, string>;
     stuckCount: number;
     stuckThresholdMinutes: number;
   }> {
+    type StatsResult = {
+      counts: Record<string, number>;
+      totalVolumeByStatus: Record<string, string>;
+      stuckCount: number;
+      stuckThresholdMinutes: number;
+    };
+
+    const cached = await this.redisService.getObject<StatsResult>(STATS_CACHE_KEY);
+    if (cached) return cached;
+
     const STUCK_THRESHOLD_MS = 30 * 60 * 1_000;
     const stuckCutoff = new Date(Date.now() - STUCK_THRESHOLD_MS);
 
@@ -381,7 +412,10 @@ export class PaymentsService {
       totalVolumeByStatus[row.status] = parseFloat(row.totalVolume).toFixed(2);
     }
 
-    return { counts, totalVolumeByStatus, stuckCount, stuckThresholdMinutes: 30 };
+    const result: StatsResult = { counts, totalVolumeByStatus, stuckCount, stuckThresholdMinutes: 30 };
+    this.redisService.setObject(STATS_CACHE_KEY, result, STATS_CACHE_TTL_MS).catch(() => {});
+
+    return result;
   }
 
   
@@ -395,6 +429,15 @@ export class PaymentsService {
       },
       relations: ['senderAccount', 'recipientAccount'],
       order: { createdAt: 'ASC' },
+    });
+  }
+
+  async invalidatePaymentCaches(): Promise<void> {
+    await Promise.all([
+      this.redisService.del(STATS_CACHE_KEY),
+      this.redisService.deleteByPattern('payments:list:*'),
+    ]).catch((err) => {
+      this.logger.warn(`Cache invalidation failed: ${err.message}`);
     });
   }
 

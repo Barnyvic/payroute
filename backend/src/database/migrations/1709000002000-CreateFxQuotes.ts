@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateFxQuotes1709000002 implements MigrationInterface {
-  name = 'CreateFxQuotes1709000002';
+export class CreateFxQuotes1709000002000 implements MigrationInterface {
+  name = 'CreateFxQuotes1709000002000';
 
   async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

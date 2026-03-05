@@ -859,7 +859,7 @@ docker-compose logs backend | grep webhook
 
 ---
 
-## 📝 Environment Variables
+##  Environment Variables
 
 ### Backend
 
@@ -883,7 +883,7 @@ docker-compose logs backend | grep webhook
 
 ---
 
-## 🎯 Design Decisions
+##  Design Decisions
 
 ### Why TypeORM Instead of Raw SQL?
 
@@ -924,26 +924,26 @@ docker-compose logs backend | grep webhook
 
 ---
 
-## 📚 Additional Documentation
+##  Additional Documentation
 
 - **[SCHEMA.md](./SCHEMA.md)** - Detailed database schema design
 - **[ANALYSIS.md](./ANALYSIS.md)** - Code review, failure scenarios, production readiness
 
 ---
 
-## 🤝 Contributing
+##  Contributing
 
 This is a take-home assignment, not accepting external contributions.
 
 ---
 
-## 📄 License
+## License
 
 Proprietary - PayRoute Assessment Project
 
 ---
 
-## ✅ Implementation Checklist
+##  Implementation Checklist
 
 ### Backend
 - [x] NestJS project setup
@@ -990,15 +990,7 @@ Proprietary - PayRoute Assessment Project
 
 ### Documentation
 - [x] README.md (this file)
-- [ ] SCHEMA.md (database design document)
-- [ ] ANALYSIS.md (written analysis)
+- [x] SCHEMA.md (database design document)
+- [x] ANALYSIS.md (written analysis)
 
 ---
-
-## 📞 Support
-
-For questions about this implementation, please create an issue or contact the repository owner.
-
----
-
-**Built with ❤️ for PayRoute Engineering Assessment**

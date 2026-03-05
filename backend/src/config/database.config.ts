@@ -11,7 +11,7 @@ export const databaseOptions: DataSourceOptions = {
   username: process.env.DATABASE_USER || 'payroute',
   password: process.env.DATABASE_PASSWORD || 'payroute_secret_123',
   database: process.env.DATABASE_NAME || 'payroute_db',
-  entities: [__dirname + '/..*.entity{.ts,.js}'],
+  entities: [__dirname + '/../**/*.entity{.ts,.js}'],
   migrations: [__dirname + '/../database/migrations/*{.ts,.js}'],
   synchronize: false,
   logging: process.env.NODE_ENV === 'development',

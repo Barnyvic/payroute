@@ -18,7 +18,7 @@ import { WEBHOOK_QUEUE, WEBHOOK_JOB_OPTIONS } from '../queue/queue.constants';
 import type { WebhookJobData } from '../queue/webhook.processor';
 
 @ApiTags('webhooks')
-@SkipThrottle()
+@SkipThrottle({ global: true, payments: true, strict: true })
 @Controller('webhooks')
 export class WebhooksController {
   private readonly logger = new Logger(WebhooksController.name);

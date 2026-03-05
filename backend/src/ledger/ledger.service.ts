@@ -16,17 +16,7 @@ export class LedgerService {
     const account = await manager.findOne(Account, { where: { id: accountId } });
     if (!account) throw new NotFoundException(`Account ${accountId} not found`);
 
-    const entry = manager.create(LedgerEntry, {
-      transactionId,
-      accountId,
-      currency: account.currency,
-      amount: `-${amount}`,
-      entryType: EntryType.DEBIT,
-      isReversal: false,
-    });
-    await manager.save(LedgerEntry, entry);
-
-    const result = await manager.query<{ balance: string }[]>(
+    const raw = await manager.query(
       `UPDATE accounts
          SET balance    = balance - $1::NUMERIC,
              version    = version + 1,
@@ -37,14 +27,26 @@ export class LedgerService {
       [amount, accountId],
     );
 
-    if (!result || result.length === 0) {
+    const rows: { balance: string }[] = Array.isArray(raw) && Array.isArray(raw[0]) ? raw[0] : raw;
+
+    if (!rows || rows.length === 0 || rows[0]?.balance === undefined) {
       throw new BadRequestException(
         'Insufficient balance — the debit could not be applied',
       );
     }
 
+    const entry = manager.create(LedgerEntry, {
+      transactionId,
+      accountId,
+      currency: account.currency,
+      amount: `-${amount}`,
+      entryType: EntryType.DEBIT,
+      isReversal: false,
+    });
+    await manager.save(LedgerEntry, entry);
+
     this.logger.log(
-      `Debit applied: account=${accountId} amount=-${amount} txn=${transactionId} new_balance=${result[0].balance}`,
+      `Debit applied: account=${accountId} amount=-${amount} txn=${transactionId} new_balance=${rows[0].balance}`,
     );
 
     return entry;

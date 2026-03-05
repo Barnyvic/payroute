@@ -1,8 +1,10 @@
 import { Controller, Get, Param, ParseUUIDPipe } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { AccountsService } from './accounts.service';
 
 @ApiTags('accounts')
+@SkipThrottle({ global: true, payments: true, strict: true })
 @Controller('accounts')
 export class AccountsController {
   constructor(private readonly accountsService: AccountsService) {}

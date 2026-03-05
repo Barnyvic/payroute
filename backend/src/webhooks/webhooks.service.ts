@@ -151,6 +151,8 @@ export class WebhooksService {
       });
 
       
+      await this.paymentsService.invalidatePaymentCaches();
+
       if (payload.status === 'completed') {
         this.eventEmitter.emit(
           'payment.completed',

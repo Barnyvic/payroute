@@ -14,7 +14,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         username: configService.get<string>('DATABASE_USER', 'payroute'),
         password: configService.get<string>('DATABASE_PASSWORD', 'payroute_secret_123'),
         database: configService.get<string>('DATABASE_NAME', 'payroute_db'),
-        entities: [__dirname + '/..*.entity{.ts,.js}'],
+        entities: [__dirname + '/../**/*.entity{.ts,.js}'],
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         synchronize: false,
         migrationsRun: true,

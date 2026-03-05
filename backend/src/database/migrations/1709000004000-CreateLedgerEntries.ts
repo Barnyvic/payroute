@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateLedgerEntries1709000004 implements MigrationInterface {
-  name = 'CreateLedgerEntries1709000004';
+export class CreateLedgerEntries1709000004000 implements MigrationInterface {
+  name = 'CreateLedgerEntries1709000004000';
 
   async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

@@ -22,7 +22,7 @@ import {
   ApiParam,
   ApiBody,
 } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
+import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { ListPaymentsDto } from './dto/list-payments.dto';
@@ -60,12 +60,14 @@ export class PaymentsController {
   }
 
   @Get()
+  @SkipThrottle({ global: true, payments: true, strict: true })
   @ApiOperation({ summary: 'List payments with pagination and filters' })
   findAll(@Query() query: ListPaymentsDto) {
     return this.paymentsService.findAll(query);
   }
 
   @Get('stats')
+  @SkipThrottle({ global: true, payments: true, strict: true })
   @ApiOperation({
     summary: 'Operational statistics',
     description:
@@ -78,6 +80,7 @@ export class PaymentsController {
   }
 
   @Get('stuck')
+  @SkipThrottle({ global: true, payments: true, strict: true })
   @ApiOperation({
     summary: 'List stuck PROCESSING payments',
     description:
@@ -92,6 +95,7 @@ export class PaymentsController {
   }
 
   @Get(':id')
+  @SkipThrottle({ global: true, payments: true, strict: true })
   @ApiOperation({ summary: 'Get payment details including ledger entries and state history' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   findOne(@Param('id', ParseUUIDPipe) id: string) {

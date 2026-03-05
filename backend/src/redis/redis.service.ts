@@ -99,4 +99,21 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async setObject(key: string, value: unknown, ttlMs?: number): Promise<void> {
     await this.set(key, JSON.stringify(value), ttlMs);
   }
+
+  async deleteByPattern(pattern: string): Promise<number> {
+    const fullPattern = `${CACHE_PREFIX}${pattern}`;
+    let deleted = 0;
+    let cursor = '0';
+
+    do {
+      const [nextCursor, keys] = await this.client.scan(cursor, 'MATCH', fullPattern, 'COUNT', 100);
+      cursor = nextCursor;
+      if (keys.length > 0) {
+        await this.client.del(...keys);
+        deleted += keys.length;
+      }
+    } while (cursor !== '0');
+
+    return deleted;
+  }
 }

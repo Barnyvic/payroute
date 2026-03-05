@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: payroute_secret_123
       POSTGRES_DB: payroute_db
     ports:
-      - '5432:5432'
+      - '5433:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -23,7 +23,7 @@ services:
     restart: unless-stopped
     command: redis-server --appendonly yes
     ports:
-      - '6379:6379'
+      - '6380:6379'
     volumes:
       - redis_data:/data
     healthcheck:
@@ -53,8 +53,9 @@ services:
       PORT: 3000
       NODE_ENV: production
       WEBHOOK_SECRET: webhook_secret_for_hmac_verification
+      PROVIDER_CALLBACK_URL: http://localhost:3000
       JWT_SECRET: change-this-in-production-min-32-chars
-      ALLOWED_ORIGIN: http://localhost:5173
+      ALLOWED_ORIGIN: http://localhost:5173,http://localhost:5174
     ports:
       - '3000:3000'
     depends_on:

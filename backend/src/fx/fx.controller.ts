@@ -1,8 +1,10 @@
 import { Controller, Get, Query, ParseFloatPipe } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { FxService } from './fx.service';
 
 @ApiTags('fx')
+@SkipThrottle({ global: true, payments: true, strict: true })
 @Controller('fx')
 export class FxController {
   constructor(private readonly fxService: FxService) {}
