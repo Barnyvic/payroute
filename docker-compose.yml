@@ -5,11 +5,11 @@ services:
     image: postgres:15-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: payroute
-      POSTGRES_PASSWORD: payroute_secret_123
-      POSTGRES_DB: payroute_db
+      POSTGRES_USER: ${POSTGRES_USER:-payroute}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-payroute_db}
     ports:
-      - '5433:5432'
+      - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -23,7 +23,7 @@ services:
     restart: unless-stopped
     command: redis-server --appendonly yes
     ports:
-      - '6380:6379'
+      - '6379:6379'
     volumes:
       - redis_data:/data
     healthcheck:
@@ -38,24 +38,21 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      # Database
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
-      DATABASE_USER: payroute
-      DATABASE_PASSWORD: payroute_secret_123
-      DATABASE_NAME: payroute_db
-      # Redis
+      DATABASE_USER: ${POSTGRES_USER:-payroute}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      DATABASE_NAME: ${POSTGRES_DB:-payroute_db}
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ''
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_DB: 0
-      # App
       PORT: 3000
       NODE_ENV: production
-      WEBHOOK_SECRET: webhook_secret_for_hmac_verification
-      PROVIDER_CALLBACK_URL: http://localhost:3000
-      JWT_SECRET: change-this-in-production-min-32-chars
-      ALLOWED_ORIGIN: http://localhost:5173,http://localhost:5174
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?WEBHOOK_SECRET is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      PROVIDER_CALLBACK_URL: ${PROVIDER_CALLBACK_URL:-http://localhost:3000}
+      ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-http://localhost:5173}
     ports:
       - '3000:3000'
     depends_on:
