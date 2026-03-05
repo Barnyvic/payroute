@@ -28,7 +28,6 @@ export class WebhooksService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  
   async processWebhook(
     payload: WebhookPayloadDto,
     rawBody: Buffer,
@@ -36,36 +35,28 @@ export class WebhooksService {
   ): Promise<void> {
     const signatureValid = this.verifySignature(rawBody, signature);
 
-    
-    let webhookEvent: WebhookEvent | null = null;
-    try {
-      const result = await this.dataSource.query<WebhookEvent[]>(
-        `INSERT INTO webhook_events
-           (id, provider_reference, event_type, payload, signature, signature_valid, received_at, processed)
-         VALUES (gen_random_uuid(), $1, $2, $3::jsonb, $4, $5, NOW(), false)
-         ON CONFLICT (provider_reference, event_type) DO NOTHING
-         RETURNING *`,
-        [
-          payload.reference,
-          payload.status,
-          JSON.stringify(payload),
-          signature || null,
-          signatureValid,
-        ],
-      );
+    const result = await this.dataSource.query<WebhookEvent[]>(
+      `INSERT INTO webhook_events
+         (id, provider_reference, event_type, payload, signature, signature_valid, received_at, processed)
+       VALUES (gen_random_uuid(), $1, $2, $3::jsonb, $4, $5, NOW(), false)
+       ON CONFLICT (provider_reference, event_type) DO NOTHING
+       RETURNING *`,
+      [
+        payload.reference,
+        payload.status,
+        JSON.stringify(payload),
+        signature || null,
+        signatureValid,
+      ],
+    );
 
-      if (!result || result.length === 0) {
-        this.logger.warn(`Duplicate webhook ignored: ref=${payload.reference} type=${payload.status}`);
-        return;
-      }
-
-      webhookEvent = result[0];
-    } catch (err) {
-      this.logger.error(`Failed to log webhook event: ${err.message}`);
+    if (!result || result.length === 0) {
+      this.logger.warn(`Duplicate webhook ignored: ref=${payload.reference} type=${payload.status}`);
       return;
     }
 
-    
+    const webhookEvent = result[0];
+
     if (!signatureValid) {
       this.logger.warn(
         `Invalid signature for ref=${payload.reference} — logged but not processed`,
@@ -74,38 +65,30 @@ export class WebhooksService {
       return;
     }
 
-    
-    const transaction = await this.transactionRepo.findOne({
-      where: { providerReference: payload.reference },
-    });
+    let processedTransaction: Transaction | null = null;
 
-    if (!transaction) {
-      this.logger.warn(`Unknown provider reference: ${payload.reference}`);
-      await this.webhookEventRepo.update(webhookEvent.id, {
-        error: `No transaction found for provider reference ${payload.reference}`,
-      });
-      return;
-    }
-
-    
-    try {
-      this.paymentsService.validateTransition(
-        transaction.status,
-        payload.status as TransactionStatus,
-      );
-    } catch (err) {
-      this.logger.warn(
-        `Invalid transition for txn=${transaction.id}: ${transaction.status} → ${payload.status}`,
-      );
-      await this.webhookEventRepo.update(webhookEvent.id, { error: err.message });
-      return;
-    }
-
-    
     try {
       await this.dataSource.transaction(async (manager) => {
+        const transaction = await manager
+          .createQueryBuilder(Transaction, 't')
+          .where('t.providerReference = :ref', { ref: payload.reference })
+          .setLock('pessimistic_write')
+          .getOne();
+
+        if (!transaction) {
+          this.logger.warn(`Unknown provider reference: ${payload.reference}`);
+          await manager.update(WebhookEvent, webhookEvent.id, {
+            error: `No transaction found for provider reference ${payload.reference}`,
+          });
+          return;
+        }
+
+        this.paymentsService.validateTransition(
+          transaction.status,
+          payload.status as TransactionStatus,
+        );
+
         if (payload.status === 'completed') {
-          
           await this.ledgerService.credit(
             transaction.recipientAccountId,
             transaction.destinationAmount,
@@ -122,7 +105,6 @@ export class WebhooksService {
             `Payment completed: txn=${transaction.id} credited=${transaction.destinationAmount} ${transaction.destinationCurrency}`,
           );
         } else if (payload.status === 'failed') {
-          
           await this.ledgerService.createCompensatingEntries(transaction.id, manager);
 
           await manager.update(Transaction, transaction.id, {
@@ -148,38 +130,42 @@ export class WebhooksService {
           processed: true,
           processedAt: new Date(),
         });
+
+        processedTransaction = transaction;
       });
-
-      
-      await this.paymentsService.invalidatePaymentCaches();
-
-      if (payload.status === 'completed') {
-        this.eventEmitter.emit(
-          'payment.completed',
-          new PaymentCompletedEvent(
-            transaction.id,
-            transaction.recipientAccountId,
-            transaction.destinationAmount,
-            transaction.destinationCurrency,
-            payload.reference,
-          ),
-        );
-      } else if (payload.status === 'failed') {
-        this.eventEmitter.emit(
-          'payment.failed',
-          new PaymentFailedEvent(
-            transaction.id,
-            payload.reference,
-            `Provider reported failure`,
-          ),
-        );
-      }
     } catch (err) {
       this.logger.error(
-        `Failed to process webhook for txn=${transaction.id}: ${err.message}`,
+        `Failed to process webhook ref=${payload.reference}: ${err.message}`,
         err.stack,
       );
-      await this.webhookEventRepo.update(webhookEvent.id, { error: err.message });
+      await this.webhookEventRepo.update(webhookEvent.id, { error: err.message }).catch(() => {});
+      throw err;
+    }
+
+    if (!processedTransaction) return;
+
+    await this.paymentsService.invalidatePaymentCaches();
+
+    if (payload.status === 'completed') {
+      this.eventEmitter.emit(
+        'payment.completed',
+        new PaymentCompletedEvent(
+          processedTransaction.id,
+          processedTransaction.recipientAccountId,
+          processedTransaction.destinationAmount,
+          processedTransaction.destinationCurrency,
+          payload.reference,
+        ),
+      );
+    } else if (payload.status === 'failed') {
+      this.eventEmitter.emit(
+        'payment.failed',
+        new PaymentFailedEvent(
+          processedTransaction.id,
+          payload.reference,
+          'Provider reported failure',
+        ),
+      );
     }
   }
 

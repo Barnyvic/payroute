@@ -13,6 +13,7 @@ import { WebhooksModule } from '../webhooks/webhooks.module';
 import { ProviderProcessor } from './provider.processor';
 import { WebhookProcessor } from './webhook.processor';
 import { StuckPaymentScheduler } from './stuck-payment.scheduler';
+import { DeadLetterHandler } from './dead-letter.handler';
 import { PROVIDER_QUEUE, WEBHOOK_QUEUE } from './queue.constants';
 
 @Module({
@@ -40,6 +41,6 @@ import { PROVIDER_QUEUE, WEBHOOK_QUEUE } from './queue.constants';
     PaymentsModule,
     WebhooksModule,
   ],
-  providers: [ProviderProcessor, WebhookProcessor, StuckPaymentScheduler],
+  providers: [ProviderProcessor, WebhookProcessor, StuckPaymentScheduler, DeadLetterHandler],
 })
 export class QueueModule {}

@@ -15,12 +15,24 @@ async function bootstrap() {
     logger: ['log', 'error', 'warn', 'debug'],
   });
 
-  
-  
+  const WEBHOOK_MAX_BODY_BYTES = 1_048_576;
+
   app.use('/api/webhooks/provider', (req: any, res: any, next: any) => {
     const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    let totalBytes = 0;
+
+    req.on('data', (chunk: Buffer) => {
+      totalBytes += chunk.length;
+      if (totalBytes > WEBHOOK_MAX_BODY_BYTES) {
+        req.destroy();
+        res.status(413).json({ statusCode: 413, message: 'Webhook payload too large' });
+        return;
+      }
+      chunks.push(chunk);
+    });
+
     req.on('end', () => {
+      if (res.writableEnded) return;
       req.rawBody = Buffer.concat(chunks);
       try {
         req.body = JSON.parse(req.rawBody.toString());

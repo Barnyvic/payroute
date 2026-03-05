@@ -31,6 +31,7 @@ export class StuckPaymentScheduler {
     const cutoff = new Date(Date.now() - maxAgeMs);
     let enqueued = 0;
     let tooOld = 0;
+    let skippedActive = 0;
 
     for (const txn of stuckPayments) {
       if (txn.createdAt < cutoff) {
@@ -39,6 +40,17 @@ export class StuckPaymentScheduler {
           `Skipping txn=${txn.id} — stuck for >${MAX_RETRY_AGE_HOURS}h, needs manual intervention`,
         );
         continue;
+      }
+
+      const existingJob = await this.providerQueue.getJob(`retry-${txn.id}`);
+      if (existingJob) {
+        const state = await existingJob.getState();
+        if (state === 'active' || state === 'waiting' || state === 'delayed') {
+          skippedActive++;
+          this.logger.debug(`Skipping txn=${txn.id} — retry job already ${state}`);
+          continue;
+        }
+        await existingJob.remove().catch(() => {});
       }
 
       await this.providerQueue.add(
@@ -61,7 +73,7 @@ export class StuckPaymentScheduler {
     }
 
     this.logger.log(
-      `Stuck payment sweep complete: enqueued=${enqueued} skipped_too_old=${tooOld}`,
+      `Stuck payment sweep complete: enqueued=${enqueued} skipped_active=${skippedActive} skipped_too_old=${tooOld}`,
     );
   }
 }

@@ -4,7 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Job } from 'bullmq';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Transaction } from '../payments/entities/transaction.entity';
+import { Transaction, TransactionStatus } from '../payments/entities/transaction.entity';
 import { ProviderService } from '../provider/provider.service';
 import { PaymentInitiatedEvent } from '../events/payment.events';
 import { PROVIDER_QUEUE } from './queue.constants';
@@ -33,6 +33,22 @@ export class ProviderProcessor extends WorkerHost {
 
   async process(job: Job<ProviderJobData>): Promise<void> {
     const { transactionId, sourceAmount, sourceCurrency, destinationCurrency, senderAccountId, idempotencyKey } = job.data;
+
+    const txn = await this.transactionRepo.findOne({ where: { id: transactionId } });
+
+    if (!txn || txn.status !== TransactionStatus.PROCESSING) {
+      this.logger.warn(
+        `Skipping provider submission: txn=${transactionId} status=${txn?.status ?? 'NOT_FOUND'} — no longer eligible`,
+      );
+      return;
+    }
+
+    if (txn.providerReference) {
+      this.logger.warn(
+        `Skipping provider submission: txn=${transactionId} already has ref=${txn.providerReference}`,
+      );
+      return;
+    }
 
     this.logger.log(
       `[attempt ${job.attemptsMade + 1}/${job.opts.attempts}] Submitting txn=${transactionId} to provider`,
