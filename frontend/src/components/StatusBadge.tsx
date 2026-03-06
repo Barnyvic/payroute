@@ -6,6 +6,7 @@ const CONFIG: Record<TransactionStatus, { label: string; classes: string }> = {
   completed:  { label: 'Completed',  classes: 'bg-green-100 text-green-800 ring-green-200' },
   failed:     { label: 'Failed',     classes: 'bg-red-100 text-red-800 ring-red-200' },
   reversed:   { label: 'Reversed',   classes: 'bg-slate-100 text-slate-700 ring-slate-200' },
+  disputed:   { label: 'Disputed',  classes: 'bg-amber-100 text-amber-800 ring-amber-200' },
 };
 
 interface Props {
@@ -26,7 +27,8 @@ export function StatusBadge({ status, size = 'md' }: Props) {
           status === 'processing' ? 'animate-pulse bg-yellow-500' :
           status === 'completed'  ? 'bg-green-500' :
           status === 'failed'     ? 'bg-red-500' :
-          status === 'reversed'   ? 'bg-slate-500' : 'bg-gray-400'
+          status === 'reversed'   ? 'bg-slate-500' :
+          status === 'disputed'   ? 'bg-amber-500' : 'bg-gray-400'
         }`}
       />
       {config.label}

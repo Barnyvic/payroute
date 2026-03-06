@@ -3,7 +3,8 @@ export type TransactionStatus =
   | 'processing'
   | 'completed'
   | 'failed'
-  | 'reversed';
+  | 'reversed'
+  | 'disputed';
 
 export type EntryType = 'debit' | 'credit';
 
