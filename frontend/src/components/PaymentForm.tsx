@@ -162,9 +162,34 @@ export function PaymentForm() {
   const [successTxnId, setSuccessTxnId] = useState<string | null>(null);
 
   const idempotencyKeyRef = useRef<string>(generateIdempotencyKey());
+  const hasAppliedDemoRef = useRef(false);
 
   const senderAccount = accounts?.find((a) => a.id === senderAccountId);
   const recipientAccount = accounts?.find((a) => a.id === recipientAccountId);
+
+  // Pre-fill with demo data when accounts first load (e.g. seeded user_alice NGN → user_bob USD)
+  useEffect(() => {
+    if (
+      hasAppliedDemoRef.current ||
+      !accounts?.length ||
+      senderAccountId ||
+      recipientAccountId ||
+      amount
+    ) {
+      return;
+    }
+    const withBalance = accounts.filter((a) => parseFloat(a.balance) > 0);
+    const sender = withBalance.find((a) => a.currency === 'NGN') ?? withBalance[0];
+    if (!sender) return;
+    const recipient = accounts.find(
+      (a) => a.id !== sender.id && a.currency !== sender.currency,
+    );
+    if (!recipient) return;
+    hasAppliedDemoRef.current = true;
+    setSenderAccountId(sender.id);
+    setRecipientAccountId(recipient.id);
+    setAmount('100');
+  }, [accounts, senderAccountId, recipientAccountId, amount]);
 
   const recipientAccounts = useMemo(
     () =>
@@ -251,6 +276,7 @@ export function PaymentForm() {
               setRecipientAccountId('');
               setAmount('');
               setQuote(null);
+              hasAppliedDemoRef.current = false;
               idempotencyKeyRef.current = generateIdempotencyKey();
             }}
             className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50"
