@@ -35,6 +35,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
+    command: ['sh', '-lc', 'node dist/database/seeds/seed.js && node dist/main']
     environment:
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432

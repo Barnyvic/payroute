@@ -5,8 +5,19 @@ import { databaseOptions } from '../../config/database.config';
 async function seed() {
   const dataSource = new DataSource(databaseOptions);
   await dataSource.initialize();
+  await dataSource.runMigrations();
 
-  console.log('Seeding database...');
+  const [{ count }] = await dataSource.query<{ count: string }[]>(
+    `SELECT COUNT(*)::text AS count FROM accounts`,
+  );
+  const existing = parseInt(count ?? '0', 10);
+  if (existing > 0) {
+    console.log(`Seed skipped: accounts table already has ${existing} row(s).`);
+    await dataSource.destroy();
+    return;
+  }
+
+  console.log('Seeding database (fresh DB detected)...');
 
   const accounts = [
     

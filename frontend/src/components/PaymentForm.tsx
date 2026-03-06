@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useId } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAccounts } from '../hooks/useAccounts';
 import { useCreatePayment } from '../hooks/usePayments';
@@ -27,6 +27,7 @@ function AccountInput({
   placeholder: string;
   selectedAccount?: Account;
 }) {
+  const inputId = useId();
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -76,13 +77,27 @@ function AccountInput({
 
   return (
     <div ref={wrapperRef} className="relative">
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 mb-1">
+        {label}
+      </label>
 
       {selectedAccount && !open ? (
         <div
-          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-50 cursor-pointer flex justify-between items-center"
+          role="button"
+          tabIndex={disabled ? -1 : 0}
+          className={`w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-50 flex justify-between items-center ${
+            disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+          }`}
           onClick={() => {
             if (!disabled) {
+              setOpen(true);
+              setSearch('');
+            }
+          }}
+          onKeyDown={(e) => {
+            if (disabled) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
               setOpen(true);
               setSearch('');
             }
@@ -94,6 +109,7 @@ function AccountInput({
             className="text-gray-400 hover:text-gray-600 text-xs ml-2"
             onClick={(e) => {
               e.stopPropagation();
+              if (disabled) return;
               onChange('');
               setSearch('');
               setOpen(true);
@@ -104,8 +120,11 @@ function AccountInput({
         </div>
       ) : (
         <input
+          id={inputId}
           type="text"
-          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+          className={`w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 ${
+            disabled ? 'bg-gray-50 cursor-not-allowed text-gray-500' : ''
+          }`}
           placeholder={placeholder}
           value={search}
           onChange={(e) => handleInputChange(e.target.value)}
@@ -198,6 +217,8 @@ export function PaymentForm() {
       ) ?? [],
     [accounts, senderAccountId, senderAccount?.currency],
   );
+
+  const recipientAccountsForInput = senderAccount ? recipientAccounts : accounts ?? [];
 
   useEffect(() => {
     if (!senderAccount || !recipientAccount || !amount || parseFloat(amount) <= 0) {
@@ -294,8 +315,18 @@ export function PaymentForm() {
         label="Source Account"
         value={senderAccountId}
         onChange={(id) => {
+          const nextSender = accounts?.find((a) => a.id === id);
+          const nextRecipient = accounts?.find((a) => a.id === recipientAccountId);
+
           setSenderAccountId(id);
-          setRecipientAccountId('');
+          if (
+            !nextSender ||
+            !nextRecipient ||
+            nextRecipient.id === nextSender.id ||
+            nextRecipient.currency === nextSender.currency
+          ) {
+            setRecipientAccountId('');
+          }
           setQuote(null);
         }}
         accounts={accounts ?? []}
@@ -311,11 +342,17 @@ export function PaymentForm() {
           setRecipientAccountId(id);
           setQuote(null);
         }}
-        accounts={recipientAccounts}
-        disabled={!senderAccountId}
+        accounts={recipientAccountsForInput}
+        disabled={accountsLoading}
         placeholder="Search by user ID, currency, or paste account UUID…"
         selectedAccount={recipientAccount}
       />
+
+      {!senderAccountId && (accounts?.length ?? 0) > 0 && (
+        <p className="text-xs text-gray-500">
+          Tip: select a source account to filter recipients to foreign-currency accounts.
+        </p>
+      )}
 
       {senderAccountId && recipientAccounts.length === 0 && (
         <p className="text-xs text-amber-600">
