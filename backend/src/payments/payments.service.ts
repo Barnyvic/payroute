@@ -5,6 +5,7 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -24,6 +25,9 @@ import type { ProviderJobData } from '../queue/provider.processor';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { ListPaymentsDto } from './dto/list-payments.dto';
 import { RefundPaymentDto } from './dto/refund-payment.dto';
+import { DisputePaymentDto } from './dto/dispute-payment.dto';
+import { ResolveDisputeDto } from './dto/resolve-dispute.dto';
+import { AuditService } from '../common/audit/audit.service';
 
 const ACCOUNT_LOCK_TTL_MS = 15_000;
 const REFUND_LOCK_TTL_MS = 30_000;
@@ -50,6 +54,8 @@ export class PaymentsService {
     private readonly fxService: FxService,
     private readonly redisService: RedisService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly configService: ConfigService,
+    private readonly auditService: AuditService,
   ) {}
 
   
@@ -101,8 +107,63 @@ export class PaymentsService {
           );
         }
 
-        
-        
+        const maxPerTxn = this.configService.get<number>('MAX_AMOUNT_PER_TRANSACTION', 100_000_000);
+        if (dto.amount > maxPerTxn) {
+          throw new BadRequestException(
+            `Amount exceeds maximum per transaction (${maxPerTxn}).`,
+          );
+        }
+
+        const startOfToday = new Date();
+        startOfToday.setUTCHours(0, 0, 0, 0);
+        const countResult = await manager
+          .getRepository(Transaction)
+          .createQueryBuilder('t')
+          .where('t.senderAccountId = :accountId', { accountId: dto.senderAccountId })
+          .andWhere('t.createdAt >= :start', { start: startOfToday })
+          .andWhere('t.status IN (:...statuses)', {
+            statuses: [
+              TransactionStatus.INITIATED,
+              TransactionStatus.PROCESSING,
+              TransactionStatus.COMPLETED,
+            ],
+          })
+          .getCount();
+        const maxPaymentsPerDay = this.configService.get<number>(
+          'MAX_PAYMENTS_PER_ACCOUNT_PER_DAY',
+          50,
+        );
+        if (countResult >= maxPaymentsPerDay) {
+          throw new BadRequestException(
+            `Daily payment count limit reached (${maxPaymentsPerDay} per account).`,
+          );
+        }
+
+        const volumeResult = await manager
+          .getRepository(Transaction)
+          .createQueryBuilder('t')
+          .select('COALESCE(SUM(t.source_amount::numeric), 0)', 'total')
+          .where('t.senderAccountId = :accountId', { accountId: dto.senderAccountId })
+          .andWhere('t.createdAt >= :start', { start: startOfToday })
+          .andWhere('t.status IN (:...statuses)', {
+            statuses: [
+              TransactionStatus.INITIATED,
+              TransactionStatus.PROCESSING,
+              TransactionStatus.COMPLETED,
+            ],
+          })
+          .getRawOne<{ total: string }>();
+        const dailyVolumeSoFar = parseFloat(volumeResult?.total ?? '0');
+        const maxDailyVolume = this.configService.get<number>(
+          'MAX_DAILY_VOLUME_PER_ACCOUNT',
+          500_000_000,
+        );
+        if (dailyVolumeSoFar + dto.amount > maxDailyVolume) {
+          throw new BadRequestException(
+            `Daily volume limit would be exceeded (max ${maxDailyVolume} per account).`,
+          );
+        }
+
         const fxQuote = await this.fxService.createQuote(
           dto.sourceCurrency,
           dto.destinationCurrency,
@@ -184,10 +245,18 @@ export class PaymentsService {
 
     await this.invalidatePaymentCaches();
 
+    this.auditService.audit({
+      event: 'payment.created',
+      transactionId: savedTransaction.id,
+      accountId: dto.senderAccountId,
+      amount: savedTransaction.sourceAmount,
+      currency: dto.sourceCurrency,
+      status: savedTransaction.status,
+    });
+
     return savedTransaction;
   }
 
-  
   async refundPayment(id: string, dto: RefundPaymentDto): Promise<Transaction> {
     const transaction = await this.transactionRepo.findOne({
       where: { id },
@@ -289,9 +358,137 @@ export class PaymentsService {
       new PaymentRefundedEvent(id, dto.reason, new Date()),
     );
 
+    this.auditService.audit({
+      event: 'payment.refunded',
+      transactionId: id,
+      reason: dto.reason,
+    });
+
     await this.invalidatePaymentCaches();
 
-    return this.transactionRepo.findOne({ where: { id } });
+    return this.transactionRepo.findOne({
+      where: { id },
+      relations: ['senderAccount', 'recipientAccount'],
+    });
+  }
+
+  async raiseDispute(id: string, dto: DisputePaymentDto): Promise<Transaction> {
+    const transaction = await this.transactionRepo.findOne({
+      where: { id },
+      relations: ['senderAccount', 'recipientAccount'],
+    });
+    if (!transaction) throw new NotFoundException(`Transaction ${id} not found`);
+    this.validateTransition(transaction.status, TransactionStatus.DISPUTED);
+
+    await this.dataSource.transaction(async (manager) => {
+      await manager.update(Transaction, id, { status: TransactionStatus.DISPUTED });
+      await manager.save(TransactionStateHistory, {
+        transactionId: id,
+        fromState: transaction.status,
+        toState: TransactionStatus.DISPUTED,
+        metadata: { reason: dto.reason, raisedAt: new Date().toISOString() },
+      });
+    });
+
+    this.auditService.audit({
+      event: 'payment.dispute_raised',
+      transactionId: id,
+      accountId: transaction.senderAccountId,
+      amount: transaction.sourceAmount,
+      currency: transaction.sourceCurrency,
+      reason: dto.reason,
+    });
+
+    await this.invalidatePaymentCaches();
+    return this.transactionRepo.findOne({
+      where: { id },
+      relations: ['senderAccount', 'recipientAccount'],
+    });
+  }
+
+  async resolveDispute(id: string, dto: ResolveDisputeDto): Promise<Transaction> {
+    const transaction = await this.transactionRepo.findOne({
+      where: { id },
+      relations: ['senderAccount', 'recipientAccount'],
+    });
+    if (!transaction) throw new NotFoundException(`Transaction ${id} not found`);
+    this.validateTransition(transaction.status, dto.action === 'reverse' ? TransactionStatus.REVERSED : TransactionStatus.COMPLETED);
+
+    if (dto.action === 'reverse') {
+      const lockKey = `refund:${id}`;
+      const refundToken = await this.redisService.acquireLock(lockKey, REFUND_LOCK_TTL_MS);
+      if (refundToken === null) {
+        throw new ConflictException('A refund is already being processed for this transaction.');
+      }
+      try {
+        await this.dataSource.transaction(async (manager) => {
+          const current = await manager
+            .createQueryBuilder(Transaction, 't')
+            .where('t.id = :id', { id })
+            .setLock('pessimistic_write_or_fail')
+            .getOne();
+          if (!current) throw new NotFoundException(`Transaction ${id} not found`);
+          this.validateTransition(current.status, TransactionStatus.REVERSED);
+          const alreadyReversed = await this.ledgerService.hasBeenReversed(id, manager);
+          if (!alreadyReversed) {
+            await this.ledgerService.debit(
+              current.recipientAccountId,
+              current.destinationAmount,
+              current.id,
+              manager,
+            );
+            await this.ledgerService.credit(
+              current.senderAccountId,
+              current.sourceAmount,
+              current.id,
+              manager,
+            );
+          }
+          await manager.update(Transaction, id, { status: TransactionStatus.REVERSED });
+          await manager.save(TransactionStateHistory, {
+            transactionId: id,
+            fromState: current.status,
+            toState: TransactionStatus.REVERSED,
+            metadata: { reason: 'Dispute resolved: chargeback', resolvedAt: new Date().toISOString() },
+          });
+        });
+      } finally {
+        await this.redisService.releaseLock(lockKey, refundToken).catch(() => {});
+      }
+      this.eventEmitter.emit(
+        'payment.refunded',
+        new PaymentRefundedEvent(id, 'Dispute resolved: chargeback', new Date()),
+      );
+      this.auditService.audit({
+        event: 'payment.dispute_resolved',
+        transactionId: id,
+        accountId: transaction.senderAccountId,
+        amount: transaction.sourceAmount,
+        action: 'reverse',
+      });
+    } else {
+      await this.dataSource.transaction(async (manager) => {
+        await manager.update(Transaction, id, { status: TransactionStatus.COMPLETED });
+        await manager.save(TransactionStateHistory, {
+          transactionId: id,
+          fromState: TransactionStatus.DISPUTED,
+          toState: TransactionStatus.COMPLETED,
+          metadata: { reason: 'Dispute rejected', resolvedAt: new Date().toISOString() },
+        });
+      });
+      this.auditService.audit({
+        event: 'payment.dispute_resolved',
+        transactionId: id,
+        accountId: transaction.senderAccountId,
+        action: 'reject',
+      });
+    }
+
+    await this.invalidatePaymentCaches();
+    return this.transactionRepo.findOne({
+      where: { id },
+      relations: ['senderAccount', 'recipientAccount'],
+    });
   }
 
   async findById(id: string): Promise<{

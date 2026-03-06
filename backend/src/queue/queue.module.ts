@@ -6,6 +6,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Transaction } from '../payments/entities/transaction.entity';
 import { TransactionStateHistory } from '../payments/entities/transaction-state-history.entity';
 import { WebhookEvent } from '../webhooks/entities/webhook-event.entity';
+import { IdempotencyKey } from '../common/entities/idempotency-key.entity';
 import { ProviderModule } from '../provider/provider.module';
 import { LedgerModule } from '../ledger/ledger.module';
 import { PaymentsModule } from '../payments/payments.module';
@@ -14,6 +15,7 @@ import { ProviderProcessor } from './provider.processor';
 import { WebhookProcessor } from './webhook.processor';
 import { StuckPaymentScheduler } from './stuck-payment.scheduler';
 import { DeadLetterHandler } from './dead-letter.handler';
+import { RetentionScheduler } from './retention.scheduler';
 import { PROVIDER_QUEUE, WEBHOOK_QUEUE } from './queue.constants';
 
 @Module({
@@ -35,12 +37,12 @@ import { PROVIDER_QUEUE, WEBHOOK_QUEUE } from './queue.constants';
       { name: PROVIDER_QUEUE },
       { name: WEBHOOK_QUEUE },
     ),
-    TypeOrmModule.forFeature([Transaction, TransactionStateHistory, WebhookEvent]),
+    TypeOrmModule.forFeature([Transaction, TransactionStateHistory, WebhookEvent, IdempotencyKey]),
     ProviderModule,
     LedgerModule,
     PaymentsModule,
     WebhooksModule,
   ],
-  providers: [ProviderProcessor, WebhookProcessor, StuckPaymentScheduler, DeadLetterHandler],
+  providers: [ProviderProcessor, WebhookProcessor, StuckPaymentScheduler, DeadLetterHandler, RetentionScheduler],
 })
 export class QueueModule {}

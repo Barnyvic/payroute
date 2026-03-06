@@ -14,10 +14,13 @@ import { WebhooksModule } from './webhooks/webhooks.module';
 import { EventsModule } from './events/events.module';
 import { QueueModule } from './queue/queue.module';
 import { HealthModule } from './health/health.module';
+import { AuditModule } from './common/audit/audit.module';
+import { ReconciliationModule } from './reconciliation/reconciliation.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    AuditModule,
 
     
     ThrottlerModule.forRoot([
@@ -47,6 +50,7 @@ import { HealthModule } from './health/health.module';
     EventsModule,
     QueueModule,
     HealthModule,
+    ReconciliationModule,
   ],
   providers: [
     

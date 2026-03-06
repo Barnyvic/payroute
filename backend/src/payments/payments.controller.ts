@@ -27,6 +27,8 @@ import { PaymentsService } from './payments.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { ListPaymentsDto } from './dto/list-payments.dto';
 import { RefundPaymentDto } from './dto/refund-payment.dto';
+import { DisputePaymentDto } from './dto/dispute-payment.dto';
+import { ResolveDisputeDto } from './dto/resolve-dispute.dto';
 import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor';
 
 export const IdempotencyKeyHeader = createParamDecorator(
@@ -123,5 +125,40 @@ export class PaymentsController {
     @Body() dto: RefundPaymentDto,
   ) {
     return this.paymentsService.refundPayment(id, dto);
+  }
+
+  @Post(':id/dispute/resolve')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ strict: { ttl: 60_000, limit: 5 } })
+  @ApiOperation({
+    summary: 'Resolve a dispute',
+    description: 'reverse = chargeback (refund sender). reject = dispute rejected, payment stays completed.',
+  })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiBody({ type: ResolveDisputeDto })
+  @ApiResponse({ status: 200, description: 'Dispute resolved' })
+  @ApiResponse({ status: 404, description: 'Transaction not found' })
+  @ApiResponse({ status: 409, description: 'Transaction status does not permit resolve' })
+  async resolveDispute(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ResolveDisputeDto,
+  ) {
+    return this.paymentsService.resolveDispute(id, dto);
+  }
+
+  @Post(':id/dispute')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ strict: { ttl: 60_000, limit: 5 } })
+  @ApiOperation({ summary: 'Raise a dispute on a completed payment' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiBody({ type: DisputePaymentDto })
+  @ApiResponse({ status: 200, description: 'Dispute raised; status = disputed' })
+  @ApiResponse({ status: 404, description: 'Transaction not found' })
+  @ApiResponse({ status: 409, description: 'Transaction status does not permit dispute' })
+  async raiseDispute(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: DisputePaymentDto,
+  ) {
+    return this.paymentsService.raiseDispute(id, dto);
   }
 }

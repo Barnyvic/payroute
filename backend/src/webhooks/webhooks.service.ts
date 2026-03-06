@@ -11,6 +11,7 @@ import { TransactionStateHistory } from '../payments/entities/transaction-state-
 import { LedgerService } from '../ledger/ledger.service';
 import { PaymentsService } from '../payments/payments.service';
 import { PaymentCompletedEvent, PaymentFailedEvent } from '../events/payment.events';
+import { AuditService } from '../common/audit/audit.service';
 
 @Injectable()
 export class WebhooksService {
@@ -26,6 +27,7 @@ export class WebhooksService {
     private readonly paymentsService: PaymentsService,
     private readonly configService: ConfigService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly auditService: AuditService,
   ) {}
 
   async processWebhook(
@@ -157,6 +159,14 @@ export class WebhooksService {
           payload.reference,
         ),
       );
+      this.auditService.audit({
+        event: 'webhook.payment_completed',
+        transactionId: processedTransaction.id,
+        accountId: processedTransaction.recipientAccountId,
+        amount: processedTransaction.destinationAmount,
+        currency: processedTransaction.destinationCurrency,
+        providerReference: payload.reference,
+      });
     } else if (payload.status === 'failed') {
       this.eventEmitter.emit(
         'payment.failed',
@@ -166,6 +176,13 @@ export class WebhooksService {
           'Provider reported failure',
         ),
       );
+      this.auditService.audit({
+        event: 'webhook.payment_failed',
+        transactionId: processedTransaction.id,
+        accountId: processedTransaction.senderAccountId,
+        amount: processedTransaction.sourceAmount,
+        providerReference: payload.reference,
+      });
     }
   }
 

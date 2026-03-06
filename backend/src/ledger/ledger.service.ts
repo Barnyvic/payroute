@@ -2,10 +2,13 @@ import { Injectable, BadRequestException, Logger, NotFoundException } from '@nes
 import { EntityManager } from 'typeorm';
 import { Account } from '../accounts/entities/account.entity';
 import { LedgerEntry, EntryType } from './entities/ledger-entry.entity';
+import { AuditService } from '../common/audit/audit.service';
 
 @Injectable()
 export class LedgerService {
   private readonly logger = new Logger(LedgerService.name);
+
+  constructor(private readonly auditService: AuditService) {}
 
   async debit(
     accountId: string,
@@ -48,7 +51,13 @@ export class LedgerService {
     this.logger.log(
       `Debit applied: account=${accountId} amount=-${amount} txn=${transactionId} new_balance=${rows[0].balance}`,
     );
-
+    this.auditService.audit({
+      event: 'ledger.debit',
+      transactionId,
+      accountId,
+      amount: `-${amount}`,
+      currency: account.currency,
+    });
     return entry;
   }
 
@@ -84,7 +93,13 @@ export class LedgerService {
     this.logger.log(
       `Credit applied: account=${accountId} amount=+${amount} txn=${transactionId} new_balance=${result[0].balance}`,
     );
-
+    this.auditService.audit({
+      event: 'ledger.credit',
+      transactionId,
+      accountId,
+      amount: `+${amount}`,
+      currency: account.currency,
+    });
     return entry;
   }
 
@@ -128,7 +143,13 @@ export class LedgerService {
       this.logger.log(
         `Compensating entry applied: account=${debit.accountId} reversal=+${reversalAmount} txn=${transactionId}`,
       );
-
+      this.auditService.audit({
+        event: 'ledger.compensating_entry',
+        transactionId,
+        accountId: debit.accountId,
+        amount: `+${reversalAmount}`,
+        currency: debit.currency,
+      });
       compensating.push(entry);
     }
 

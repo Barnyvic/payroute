@@ -16,15 +16,16 @@ export enum TransactionStatus {
   COMPLETED = 'completed',
   FAILED = 'failed',
   REVERSED = 'reversed',
+  DISPUTED = 'disputed',
 }
 
-
 export const VALID_TRANSITIONS: Partial<Record<TransactionStatus, TransactionStatus[]>> = {
-  [TransactionStatus.INITIATED]:  [TransactionStatus.PROCESSING, TransactionStatus.FAILED],
+  [TransactionStatus.INITIATED]: [TransactionStatus.PROCESSING, TransactionStatus.FAILED],
   [TransactionStatus.PROCESSING]: [TransactionStatus.COMPLETED, TransactionStatus.FAILED],
-  [TransactionStatus.FAILED]:     [TransactionStatus.REVERSED],
-  [TransactionStatus.COMPLETED]:  [TransactionStatus.REVERSED],
-  [TransactionStatus.REVERSED]:   [],
+  [TransactionStatus.FAILED]: [TransactionStatus.REVERSED],
+  [TransactionStatus.COMPLETED]: [TransactionStatus.REVERSED, TransactionStatus.DISPUTED],
+  [TransactionStatus.DISPUTED]: [TransactionStatus.REVERSED, TransactionStatus.COMPLETED],
+  [TransactionStatus.REVERSED]: [],
 };
 
 @Entity('transactions')
