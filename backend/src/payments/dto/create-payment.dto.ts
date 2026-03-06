@@ -7,7 +7,23 @@ import {
   IsPositive,
   Length,
   IsUppercase,
+  Validate,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
+  ValidationArguments,
 } from 'class-validator';
+
+@ValidatorConstraint({ name: 'NotSelfPayment', async: false })
+class NotSelfPaymentConstraint implements ValidatorConstraintInterface {
+  validate(_value: unknown, args: ValidationArguments): boolean {
+    const dto = args.object as CreatePaymentDto;
+    return dto.senderAccountId !== dto.recipientAccountId;
+  }
+
+  defaultMessage(): string {
+    return 'Sender and recipient accounts must be different';
+  }
+}
 
 export class CreatePaymentDto {
   @ApiProperty({ example: 'uuid-of-sender-account' })
@@ -16,6 +32,7 @@ export class CreatePaymentDto {
 
   @ApiProperty({ example: 'uuid-of-recipient-account' })
   @IsUUID()
+  @Validate(NotSelfPaymentConstraint)
   recipientAccountId: string;
 
   @ApiProperty({ example: 'NGN', description: 'ISO 4217 source currency' })
